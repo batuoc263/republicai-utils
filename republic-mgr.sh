@@ -216,6 +216,28 @@ delegate_menu() {
     esac
 }
 
+optimize_node() {
+    echo -e "${YELLOW}Optimizing Node for Low RAM and Disk usage...${NC}"
+
+    systemctl stop $SERVICE_NAME
+    
+    # 1. Update app.toml for Pruning
+    sed -i 's/^pruning =.*/pruning = "custom"/' $HOME_DIR/config/app.toml
+    sed -i 's/^pruning-keep-recent =.*/pruning-keep-recent = "1000"/' $HOME_DIR/config/app.toml
+    sed -i 's/^pruning-keep-every =.*/pruning-keep-every = "0"/' $HOME_DIR/config/app.toml
+    sed -i 's/^pruning-interval =.*/pruning-interval = "10"/' $HOME_DIR/config/app.toml
+    
+    # 2. Update config.toml for Indexer
+    sed -i 's/^indexer =.*/indexer = "null"/' $HOME_DIR/config/config.toml
+    
+    # 3. Reduce Mempool size (Optional - for RAM)
+    sed -i 's/^size =.*/size = 1000/' $HOME_DIR/config/config.toml
+    
+    # 4. Restart Service
+    systemctl start $SERVICE_NAME
+    echo -e "${GREEN}Optimization applied! Node restarted.${NC}"
+}
+
 cleanup() {
     warn "CẢNH BÁO: Hành động này sẽ dừng node và XÓA TOÀN BỘ DỮ LIỆU!"
     read -p "Xác nhận xóa? (type 'DELETE'): " confirm
@@ -233,12 +255,13 @@ cleanup() {
 while true; do
     echo -e "\n${BLUE}=== REPUBLIC AI ALL-IN-ONE TOOLKIT ===${NC}"
     echo "1. Cài đặt Node (Binary + StateSync)"
-    echo "2. Kiểm tra Sync Status"
+    echo "2. Tối ưu node (cấu hình pruning và tắt indexer)"
     echo "3. Quản lý Ví (Tạo/Khôi phục/Ví phụ)"
     echo "4. Tạo Validator"
     echo "5. Delegate (Self/Auto)"
-    echo "6. Xem Logs (Systemd)"
-    echo "7. Cleanup (Xóa Node)"
+    echo "6. Kiểm tra Sync Status"
+    echo "7. Xem Logs (Systemd)"
+    echo "8. Cleanup (Xóa Node)"
     echo "0. Thoát"
     read -p "Chọn option: " main_opt
 
