@@ -232,6 +232,10 @@ optimize_node() {
     
     # 3. Reduce Mempool size (Optional - for RAM)
     sed -i 's/^size =.*/size = 1000/' $REPUBLIC_HOME/config/config.toml
+
+    # 4. Giảm iavl cache size xuống còn khoảng 200,000 (Tiết kiệm khoảng 1-1.5GB RAM)
+    sed -i 's/^iavl-cache-size =.*/iavl-cache-size = 200000/' $HOME/.republicd/config/app.toml
+    sed -i 's/^iavl-disable-fastnode =.*/iavl-disable-fastnode = true/' $HOME/.republicd/config/app.toml
     
     # 4. Restart Service
     systemctl start $SERVICE_NAME
