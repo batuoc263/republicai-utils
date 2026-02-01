@@ -218,20 +218,20 @@ delegate_menu() {
 
 optimize_node() {
     echo -e "${YELLOW}Optimizing Node for Low RAM and Disk usage...${NC}"
-
+    SERVICE_NAME=republicd
     systemctl stop $SERVICE_NAME
     
     # 1. Update app.toml for Pruning
-    sed -i 's/^pruning =.*/pruning = "custom"/' $HOME_DIR/config/app.toml
-    sed -i 's/^pruning-keep-recent =.*/pruning-keep-recent = "1000"/' $HOME_DIR/config/app.toml
-    sed -i 's/^pruning-keep-every =.*/pruning-keep-every = "0"/' $HOME_DIR/config/app.toml
-    sed -i 's/^pruning-interval =.*/pruning-interval = "10"/' $HOME_DIR/config/app.toml
+    sed -i 's/^pruning =.*/pruning = "custom"/' $REPUBLIC_HOME/config/app.toml
+    sed -i 's/^pruning-keep-recent =.*/pruning-keep-recent = "1000"/' $REPUBLIC_HOME/config/app.toml
+    sed -i 's/^pruning-keep-every =.*/pruning-keep-every = "0"/' $REPUBLIC_HOME/config/app.toml
+    sed -i 's/^pruning-interval =.*/pruning-interval = "10"/' $REPUBLIC_HOME/config/app.toml
     
     # 2. Update config.toml for Indexer
-    sed -i 's/^indexer =.*/indexer = "null"/' $HOME_DIR/config/config.toml
+    sed -i 's/^indexer =.*/indexer = "null"/' $REPUBLIC_HOME/config/config.toml
     
     # 3. Reduce Mempool size (Optional - for RAM)
-    sed -i 's/^size =.*/size = 1000/' $HOME_DIR/config/config.toml
+    sed -i 's/^size =.*/size = 1000/' $REPUBLIC_HOME/config/config.toml
     
     # 4. Restart Service
     systemctl start $SERVICE_NAME
@@ -321,8 +321,8 @@ while true; do
         3) manage_wallet ;;
         4) create_validator_json;;
         5) delegate_menu ;;
-        6) sudo journalctl -u republicd -f -o cat ;;
-        7) republicd status 2>&1 | jq '.SyncInfo // .sync_info' ;;
+        6) republicd status 2>&1 | jq '.SyncInfo // .sync_info' ;;
+        7) sudo journalctl -u republicd -f -o cat ;;
         8) export_node_info ;;
         9) import_peers ;;
         0) exit 0 ;;
