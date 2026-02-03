@@ -110,16 +110,16 @@ create_validator_json() {
     read -p "Nhập Identity (Keybase.io ID - để trống): " identity
     read -p "Nhập Website (để trống): " website
     
-    # Nhập số lượng RAI (Mặc định là 1 RAI)
-    read -p "Nhập số lượng RAI muốn stake (Mặc định 1): " amount_rai
-    amount_rai=${amount_rai:-1}
+    # Nhập số lượng RAI (Mặc định là 0.5 RAI)
+    read -p "Nhập số lượng RAI muốn stake (Mặc định 0.5): " amount_rai
+    amount_rai=${amount_rai:-0.5}
     
     # Chuyển đổi sang arai (RAI * 10^18)
     # Dùng printf để tránh định dạng số khoa học (e+18)
     amount_arai=$(printf "%.0f" $(echo "$amount_rai * 1000000000000000000" | bc -l))
 
-    read -p "Nhập Min Self Delegation (RAI) (Mặc định 0.1): " min_self_rai
-    min_self_rai=${min_self_rai:-0.1}
+    read -p "Nhập Min Self Delegation (RAI) (Mặc định 1): " min_self_rai
+    min_self_rai=${min_self_rai:-1}
     # Giữ nguyên định dạng string cho min-self-delegation vì chain thường nhận số thực ở đây
     
     read -p "Nhập tên ví (Key Name) thực hiện giao dịch: " kname
@@ -187,9 +187,9 @@ delegate_menu() {
             val_addr=$(republicd keys show "$kname" --bech val -a --keyring-backend "$KEYRING_BACKEND" --home "$REPUBLIC_HOME")
             bal=$(get_balance "$addr")
             echo -e "Balance hiện tại: ${BLUE}$bal RAI${NC}"
-            read -p "Nhập số lượng RAI muốn delegate: " amt_rai
-            amt_arai=$(printf "%.0f" $(echo "$amt_rai * 1000000000000000000" | bc -l))
-            republicd tx staking delegate "$val_addr" "${amt_arai}arai" --from "$kname" --chain-id "$CHAIN_ID" --gas "$GAS_LIMIT" --fees "$FEES" --keyring-backend "$KEYRING_BACKEND" --home "$REPUBLIC_HOME" -y
+            read -p "Nhập số lượng RAI muốn delegate: " stake_rai
+            stake_arai=$(echo "$stake_rai * 1000000000000000000 / 1" | bc)
+            republicd tx staking delegate "$val_addr" "${stake_arai}arai" --from "$kname" --chain-id "$CHAIN_ID" --gas 300000 --fees 250000000000000000arai --node "$RPC_PUBLIC" --keyring-backend "$KEYRING_BACKEND" --home "$REPUBLIC_HOME" -y
             ;;
         2)
             printf "%-15s | %-45s | %-10s\n" "Key Name" "Address" "Balance (RAI)"
@@ -252,7 +252,7 @@ export_node_info() {
     NODE_ID=$(republicd comet show-node-id --home "$REPUBLIC_HOME")
     
     # Tự động lấy IP Public (dùng dịch vụ ifconfig.me)
-    PUBLIC_IP=$(curl -s ifconfig.me)
+    PUBLIC_IP=$(curl -s -4 ifconfig.me)
     
     # Lấy port P2P (mặc định là 26656 từ config.toml, nếu bạn đổi port hãy sửa ở đây)
     P2P_PORT=$(sed -n 's/^laddr = "tcp:\/\/0.0.0.0:\([0-9]*\)".*/\1/p' "$REPUBLIC_HOME/config/config.toml" | head -n 1)
