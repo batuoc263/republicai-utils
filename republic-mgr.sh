@@ -3,6 +3,7 @@
 # --- Cấu hình hệ thống ---
 REPUBLIC_HOME="$HOME/.republicd"
 BINARY_PATH="/usr/local/bin/republicd"
+BINARY_URL="https://github.com/RepublicAI/networks/releases/download/v0.2.0/republicd-linux-amd64"
 CHAIN_ID="raitestnet_77701-1"
 VERSION="v0.1.0"
 SNAP_RPC="https://statesync.republicai.io"
@@ -39,7 +40,7 @@ install_node() {
     msg "Cài đặt phụ trợ..."
     sudo apt install jq bc git curl
     msg "Đang cài đặt Republic Binary..."
-    curl -L "https://media.githubusercontent.com/media/RepublicAI/networks/main/testnet/releases/${VERSION}/republicd-linux-amd64" -o /tmp/republicd
+    curl -L "$BINARY_URL" -o /tmp/republicd
     chmod +x /tmp/republicd
     sudo mv /tmp/republicd "$BINARY_PATH"
     
@@ -299,7 +300,7 @@ update_node() {
     
     # 1. Yêu cầu nhập URL hoặc phiên bản
     read -p "Nhập URL tải Binary mới (hoặc để trống để dùng v0.2.0): " UPDATE_URL
-    UPDATE_URL=${UPDATE_URL:-"https://github.com/RepublicAI/networks/releases/download/v0.2.0/republicd-linux-amd64"}
+    UPDATE_URL=${UPDATE_URL:-"$BINARY_URL"}
     
     # 2. Dừng dịch vụ
     msg "Đang dừng dịch vụ republicd..."
