@@ -209,7 +209,7 @@ delegate_menu() {
                 addr=${item#*:}
                 bal=$(get_balance "$addr")
                 if (( $(echo "$bal > 0.3" | bc -l) )); then
-                    stake_rai=$(echo "$bal - 0.3" | bc -l)
+                    stake_rai=$(echo "$bal - 0.1" | bc -l)
                     stake_arai=$(echo "$stake_rai * 1000000000000000000 / 1" | bc)
                     msg "Ví $name: Stake $stake_rai RAI..."
                     republicd tx staking delegate "$val_addr" "${stake_arai}arai" --from "$name" --chain-id "$CHAIN_ID" --gas 300000 --fees 250000000000000000arai --node "$RPC_PUBLIC" --keyring-backend "$KEYRING_BACKEND" --home "$REPUBLIC_HOME" -y
