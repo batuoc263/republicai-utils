@@ -241,7 +241,7 @@ while true; do
         1) deploy_node ;;
         2) wallet_mgr ;;
         3) validator_mgr ;;
-        4) read -p "ID node: " id; d_exec "$id" status | jq .SyncInfo ;;
+        4) read -p "ID node: " id; d_exec "$id" status | jq .sync_info ;;
         5) read -p "ID node: " id; sudo docker logs -f "republicd_node$id" ;;
         0) exit 0 ;;
     esac
