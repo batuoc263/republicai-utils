@@ -19,12 +19,12 @@ msg() { echo -e "${GREEN}[*] $1${NC}"; }
 warn() { echo -e "${YELLOW}[!] $1${NC}"; }
 err() { echo -e "${RED}[!] $1${NC}"; }
 
-# --- Hàm hỗ trợ Docker ---
+# --- Hàm hỗ trợ docker ---
 # Chạy lệnh republicd bên trong container của một node cụ thể
 d_exec() {
     local id=$1
     shift
-    docker exec -it "republicd_node$id" republicd "$@" --home $CONTAINER_HOME
+    sudo docker exec -it "republicd_node$id" republicd "$@" --home $CONTAINER_HOME
 }
 
 # --- Chức năng chính ---
@@ -43,7 +43,7 @@ deploy_node() {
     mkdir -p "$DATA_DIR"
 
     msg "Khởi tạo Node $NODE_ID..."
-    docker run --rm -v "$DATA_DIR:$CONTAINER_HOME" $IMAGE \
+    sudo docker run --rm -v "$DATA_DIR:$CONTAINER_HOME" $IMAGE \
         init "$MONIKER" --chain-id "$CHAIN_ID" --home $CONTAINER_HOME
 
     curl -s "$GENESIS_URL" > "$DATA_DIR/config/genesis.json"
@@ -56,7 +56,7 @@ deploy_node() {
     sed -i 's/^pruning-keep-recent =.*/pruning-keep-recent = "100"/' "$DATA_DIR/config/app.toml"
     sed -i 's/^pruning-interval =.*/pruning-interval = "19"/' "$DATA_DIR/config/app.toml"
 
-    docker run -d --name "republicd_node$NODE_ID" --restart always \
+    sudo docker run -d --name "republicd_node$NODE_ID" --restart always \
         -v "$DATA_DIR:$CONTAINER_HOME" -p "$P2P_PORT:$P2P_PORT" -p "$RPC_PORT:$RPC_PORT" \
         $IMAGE start --home $CONTAINER_HOME
     msg "Node $NODE_ID đang chạy!"
@@ -79,14 +79,14 @@ validator_mgr() {
     read -p "Số lượng RAI stake (vd: 0.5): " amount_rai
     
     # Lấy Pubkey từ bên trong container
-    PUBKEY=$(docker exec "republicd_node$id" republicd comet show-validator --home $CONTAINER_HOME)
-    MONIKER=$(docker exec "republicd_node$id" cat $CONTAINER_HOME/config/config.toml | grep -oP '(?<=moniker = ")[^"]*')
+    PUBKEY=$(sudo docker exec "republicd_node$id" republicd comet show-validator --home $CONTAINER_HOME)
+    MONIKER=$(sudo docker exec "republicd_node$id" cat $CONTAINER_HOME/config/config.toml | grep -oP '(?<=moniker = ")[^"]*')
     
     # Tính toán arai (Sử dụng bc để chính xác)
     amount_arai=$(printf "%.0f" $(echo "$amount_rai * 1000000000000000000" | bc -l))
 
     # Tạo file json tạm bên trong container
-    docker exec "republicd_node$id" bash -c "cat <<EOF > $CONTAINER_HOME/validator.json
+    sudo docker exec "republicd_node$id" bash -c "cat <<EOF > $CONTAINER_HOME/validator.json
 {
   \"pubkey\": $PUBKEY,
   \"amount\": \"${amount_arai}arai\",
@@ -94,7 +94,7 @@ validator_mgr() {
   \"identity\": \"\",
   \"website\": \"\",
   \"security\": \"\",
-  \"details\": \"Republic AI Docker Node\",
+  \"details\": \"Republic AI Node\",
   \"commission-rate\": \"0.1\",
   \"commission-max-rate\": \"0.2\",
   \"commission-max-change-rate\": \"0.01\",
@@ -114,7 +114,7 @@ EOF"
 
 # --- Menu chính ---
 while true; do
-    echo -e "\n${GREEN}=== REPUBLIC AI DOCKER ULTIMATE TOOL ===${NC}"
+    echo -e "\n${GREEN}=== REPUBLIC AI docker ULTIMATE TOOL ===${NC}"
     echo "1. Triển khai Node mới (StateSync + Optimize)"
     echo "2. Quản lý Ví (Keys)"
     echo "3. Tạo Validator (JSON mode)"
@@ -127,7 +127,7 @@ while true; do
         2) wallet_mgr ;;
         3) validator_mgr ;;
         4) read -p "ID node: " id; d_exec "$id" status | jq .SyncInfo ;;
-        5) read -p "ID node: " id; docker logs -f "republicd_node$id" ;;
+        5) read -p "ID node: " id; sudo docker logs -f "republicd_node$id" ;;
         0) exit 0 ;;
     esac
 done
