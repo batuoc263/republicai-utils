@@ -10,7 +10,7 @@ echo "Bắt đầu xoá các keys có tiền tố: $PREFIX"
 echo "-----------------------------------"
 
 # List all keys from keyring matching the prefix
-keys=$($BINARY keys list --home "$HOME_DIR" --keyring-backend "$BACKEND" 2>/dev/null | grep "^- name: ${PREFIX}" | awk '{print $NF}')
+keys=$($BINARY keys list --home "$HOME_DIR" --keyring-backend "$BACKEND" 2>/dev/null | grep "name: ${PREFIX}" | awk '{print $NF}')
 
 count=0
 deleted=0
