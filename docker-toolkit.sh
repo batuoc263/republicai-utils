@@ -245,6 +245,28 @@ list_all_addresses() {
         # Extract node_id from container name (e.g., republicd_node1 -> 1)
         node_id=${container##republicd_node}
         
+        echo -e "${YELLOW}NODE $node_id:${NC}"
+        echo "─────────────────────────────────────────────────"
+        
+        # Get and display all wallet addresses
+        wallet_count=0
+        while IFS= read -r line; do
+            if [[ $line == *"name:"* ]]; then
+                wallet_name=$(echo "$line" | grep -oP '(?<=name:\s+)\S+')
+                wallet_count=$((wallet_count + 1))
+            fi
+            if [[ $line == *"address:"* && -n "$wallet_name" ]]; then
+                address=$(echo "$line" | grep -oP '(?<=address:\s+)(republic\S+)')
+                if [[ -n "$address" ]]; then
+                    printf "${CYAN}  • %-20s${NC} %s\n" "$wallet_name" "$address"
+                fi
+                wallet_name=""
+            fi
+        done < <(sudo docker exec "$container" republicd keys list --keyring-backend test 2>/dev/null)
+        
+        if [[ $wallet_count -eq 0 ]]; then
+            echo -e "${RED}  (Không có ví)${NC}"
+        fi
         
         # Get validator info if exists
         validator_address=$(sudo docker exec "$container" republicd keys show wallet --bech val -a --keyring-backend test --home $CONTAINER_HOME 2>/dev/null)
