@@ -281,6 +281,91 @@ list_all_addresses() {
     echo -e "${GREEN}════════════════════════════════════════════════════════════${NC}\n"
 }
 
+upgrade_binary_single() {
+    read -p "Nhập ID node để upgrade binary: " id
+    read -p "Nhập link binary (direct or github redirect): " url
+
+    if [[ -z "$id" || -z "$url" ]]; then
+        err "Vui lòng nhập ID node và URL!"
+        return 1
+    fi
+
+    msg "Tải binary về máy chủ tạm..."
+    tmpfile=$(mktemp /tmp/republicd.XXXX) || tmpfile="/tmp/republicd_new"
+
+    if ! curl -L -f -o "$tmpfile" "$url"; then
+        err "Tải binary thất bại từ: $url"
+        rm -f "$tmpfile" 2>/dev/null
+        return 1
+    fi
+
+    msg "Sao lưu binary hiện tại (nếu có) trong container..."
+    sudo docker exec "republicd_node$id" bash -c 'if [ -f /usr/local/bin/republicd ]; then cp /usr/local/bin/republicd /usr/local/bin/republicd.bak.$(date +%s) || true; fi'
+
+    msg "Đưa binary mới vào container republicd_node$id..."
+    if ! sudo docker cp "$tmpfile" "republicd_node$id":/usr/local/bin/republicd; then
+        err "Không thể copy binary vào container republicd_node$id"
+        rm -f "$tmpfile"
+        return 1
+    fi
+
+    sudo docker exec "republicd_node$id" chmod +x /usr/local/bin/republicd || warn "Không thể chmod, có thể container không có quyền"
+
+    msg "Khởi động lại container republicd_node$id để áp dụng binary mới..."
+    sudo docker restart "republicd_node$id"
+
+    rm -f "$tmpfile"
+    msg "Upgrade binary cho node $id hoàn tất."
+}
+
+upgrade_binary_all() {
+    read -p "Nhập link binary cho tất cả nodes: " url
+
+    if [[ -z "$url" ]]; then
+        err "Vui lòng nhập URL!"
+        return 1
+    fi
+
+    containers=$(sudo docker ps --filter "name=republicd_node" --format "{{.Names}}" | sort -V)
+    if [[ -z "$containers" ]]; then
+        err "Không tìm thấy container republicd_node nào!"
+        return 1
+    fi
+
+    msg "Tải binary về máy chủ tạm..."
+    tmpfile=$(mktemp /tmp/republicd.XXXX) || tmpfile="/tmp/republicd_new"
+    if ! curl -L -f -o "$tmpfile" "$url"; then
+        err "Tải binary thất bại từ: $url"
+        rm -f "$tmpfile" 2>/dev/null
+        return 1
+    fi
+
+    for container in $containers; do
+        node_id=${container##republicd_node}
+        msg "---- Upgrading $container (node $node_id) ----"
+        sudo docker exec "$container" bash -c 'if [ -f /usr/local/bin/republicd ]; then cp /usr/local/bin/republicd /usr/local/bin/republicd.bak.$(date +%s) || true; fi'
+        if sudo docker cp "$tmpfile" "$container":/usr/local/bin/republicd; then
+            sudo docker exec "$container" chmod +x /usr/local/bin/republicd || warn "chmod failed for $container"
+            sudo docker restart "$container"
+            msg "Upgrade hoàn tất cho $container"
+        else
+            err "Không thể copy binary vào $container"
+        fi
+    done
+
+    rm -f "$tmpfile"
+    msg "Hoàn tất upgrade binary cho tất cả nodes."
+}
+
+upgrade_binary_menu() {
+    echo -e "1. Upgrade single node\n2. Upgrade all nodes"
+    read -p "Chọn: " uopt
+    case $uopt in
+        1) upgrade_binary_single ;;
+        2) upgrade_binary_all ;;
+    esac
+}
+
 # --- Menu chính ---
 while true; do
     echo -e "\n${GREEN}=== REPUBLIC AI docker ULTIMATE TOOL ===${NC}"
@@ -290,6 +375,7 @@ while true; do
     echo "4. Kiểm tra Sync Status"
     echo "5. Xem Logs"
     echo "6. Xuất tất cả địa chỉ"
+    echo "7. Upgrade binary (Single node / All nodes)"
     echo "0. Thoát"
     read -p "Chọn option: " opt
     case $opt in
@@ -299,6 +385,7 @@ while true; do
         4) read -p "ID node: " id; d_exec "$id" status | jq .sync_info ;;
         5) read -p "ID node: " id; sudo docker logs -f "republicd_node$id" ;;
         6) list_all_addresses ;;
+        7) upgrade_binary_menu ;;
         0) exit 0 ;;
     esac
 done
