@@ -398,6 +398,119 @@ upgrade_binary_menu() {
     esac
 }
 
+update_peers_single() {
+    read -p "Nhập ID node để update peers: " id
+    read -p "Nhập peers mới (format: node_id@host:port,node_id@host:port,...): " peers
+
+    if [[ -z "$id" || -z "$peers" ]]; then
+        err "Vui lòng nhập ID node và peers!"
+        return 1
+    fi
+
+    # 1. Kiểm tra container tồn tại
+    if ! sudo docker ps -a --format '{{.Names}}' | grep -q "republicd_node$id"; then
+        err "Container republicd_node$id không tồn tại!"
+        return 1
+    fi
+
+    msg "Đang dừng container republicd_node$id..."
+    sudo docker stop "republicd_node$id" >/dev/null 2>&1
+
+    msg "Đang backup config.toml..."
+    sudo docker exec "republicd_node$id" bash -c 'cp '"$CONTAINER_HOME"'/config/config.toml '"$CONTAINER_HOME"'/config/config.toml.bak' 2>/dev/null || true
+
+    msg "Đang cập nhật peers..."
+    # Escape slashes in peers string for sed
+    peers_escaped=$(printf '%s\n' "$peers" | sed -e 's/[\/&]/\\&/g')
+    sudo docker exec "republicd_node$id" sed -i 's/^persistent_peers = .*/persistent_peers = "'"$peers_escaped"'"/' "$CONTAINER_HOME/config/config.toml"
+
+    if [[ $? -eq 0 ]]; then
+        msg "Đã cập nhật peers thành công."
+        msg "Đang khởi động lại container republicd_node$id..."
+        sudo docker start "republicd_node$id" >/dev/null 2>&1
+        sleep 2
+        if sudo docker ps --filter "name=republicd_node$id" --format '{{.Status}}' | grep -q "Up"; then
+            msg "Container khởi động thành công! Peers đã được cập nhật."
+            # Show current peers
+            current_peers=$(sudo docker exec "republicd_node$id" grep "persistent_peers" "$CONTAINER_HOME/config/config.toml" | cut -d'"' -f2)
+            msg "Peers hiện tại: $current_peers"
+        else
+            err "Container không thể khởi động. Vui lòng kiểm tra logs!"
+        fi
+    else
+        err "Cập nhật peers thất bại, khởi động lại container..."
+        sudo docker start "republicd_node$id" >/dev/null 2>&1
+        return 1
+    fi
+}
+
+update_peers_all() {
+    read -p "Nhập peers mới cho tất cả nodes (format: node_id@host:port,node_id@host:port,...): " peers
+
+    if [[ -z "$peers" ]]; then
+        err "Vui lòng nhập peers!"
+        return 1
+    fi
+
+    containers=$(sudo docker ps -a --filter "name=republicd_node" --format "{{.Names}}" | sort -V)
+    if [[ -z "$containers" ]]; then
+        err "Không tìm thấy container republicd_node nào!"
+        return 1
+    fi
+
+    msg "Sẵn sàng: Tất cả container sẽ được cập nhật peers..."
+    # Escape slashes in peers string for sed
+    peers_escaped=$(printf '%s\n' "$peers" | sed -e 's/[\/&]/\\&/g')
+
+    success_count=0
+    fail_count=0
+
+    for container in $containers; do
+        node_id=${container##republicd_node}
+        msg "---- Updating peers for $container (node $node_id) ----"
+
+        # Stop container
+        msg "Đang dừng $container..."
+        sudo docker stop "$container" >/dev/null 2>&1
+
+        # Backup config
+        msg "Đang backup config.toml..."
+        sudo docker exec "$container" bash -c 'cp '"$CONTAINER_HOME"'/config/config.toml '"$CONTAINER_HOME"'/config/config.toml.bak' 2>/dev/null || warn "Không thể backup cho $container"
+
+        # Update peers
+        msg "Đang cập nhật peers cho $container..."
+        if sudo docker exec "$container" sed -i 's/^persistent_peers = .*/persistent_peers = "'"$peers_escaped"'"/' "$CONTAINER_HOME/config/config.toml" 2>/dev/null; then
+            # Start container
+            msg "Đang khởi động lại $container..."
+            sudo docker start "$container" >/dev/null 2>&1
+            sleep 2
+            if sudo docker ps --filter "name=$container" --format '{{.Status}}' | grep -q "Up"; then
+                msg "Container $container khởi động thành công! Peers đã được cập nhật."
+                ((success_count++))
+            else
+                err "Container $container không thể khởi động. Vui lòng kiểm tra logs!"
+                ((fail_count++))
+            fi
+        else
+            err "Cập nhật peers thất bại cho $container, khởi động lại..."
+            sudo docker start "$container" >/dev/null 2>&1 || true
+            ((fail_count++))
+        fi
+    done
+
+    msg "Hoàn tất cập nhật peers."
+    msg "Thành công: $success_count, Thất bại: $fail_count"
+}
+
+update_peers_menu() {
+    echo -e "1. Update peers single node\n2. Update peers all nodes"
+    read -p "Chọn: " uopt
+    case $uopt in
+        1) update_peers_single ;;
+        2) update_peers_all ;;
+    esac
+}
+
 # --- Menu chính ---
 while true; do
     echo -e "\n${GREEN}=== REPUBLIC AI docker ULTIMATE TOOL ===${NC}"
@@ -408,6 +521,7 @@ while true; do
     echo "5. Xem Logs"
     echo "6. Xuất tất cả địa chỉ"
     echo "7. Upgrade binary (Single node / All nodes)"
+    echo "8. Update peers (Single node / All nodes)"
     echo "0. Thoát"
     read -p "Chọn option: " opt
     case $opt in
@@ -418,6 +532,7 @@ while true; do
         5) read -p "ID node: " id; sudo docker logs -f -n 50 "republicd_node$id" ;;
         6) list_all_addresses ;;
         7) upgrade_binary_menu ;;
+        8) update_peers_menu ;;
         0) exit 0 ;;
     esac
 done
