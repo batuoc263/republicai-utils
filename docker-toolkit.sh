@@ -290,83 +290,43 @@ upgrade_binary_single() {
         return 1
     fi
 
+    # 1. Tải về máy host (giữ nguyên)
     msg "Tải binary về máy chủ tạm..."
-    tmpfile=$(mktemp /tmp/republicd.XXXX) || tmpfile="/tmp/republicd_new"
-
+    tmpfile="/tmp/republicd_new_$id"
     if ! curl -L -f -o "$tmpfile" "$url"; then
-        err "Tải binary thất bại từ: $url"
-        rm -f "$tmpfile" 2>/dev/null
+        err "Tải binary thất bại!"
         return 1
     fi
+    chmod +x "$tmpfile"
 
-    # make executable on host so docker cp preserves exec bit when possible
-    chmod +x "$tmpfile" 2>/dev/null || true
-
-    # Ensure container is running so we can exec into it; if it was stopped, start temporarily
-    was_running=$(sudo docker inspect -f '{{.State.Running}}' "republicd_node$id" 2>/dev/null || echo "false")
-    started_here=false
-    if [[ "$was_running" != "true" ]]; then
-        msg "Container republicd_node$id không chạy — sẽ start tạm thời để cập nhật"
-        if ! sudo docker start "republicd_node$id" >/dev/null 2>&1; then
-            err "Không thể start container republicd_node$id"
-            rm -f "$tmpfile"
-            return 1
-        fi
-        started_here=true
-        sleep 2
-    fi
-
-    msg "Sao lưu binary hiện tại (nếu có) trong container..."
-    sudo docker exec "republicd_node$id" bash -c 'if [ -f /usr/local/bin/republicd ]; then cp /usr/local/bin/republicd /usr/local/bin/republicd.bak.$(date +%s) || true; fi' 2>/dev/null || warn "Không thể sao lưu (file có thể không tồn tại)"
-
-    msg "Đưa binary mới vào container republicd_node$id..."
-    if ! sudo docker cp "$tmpfile" "republicd_node$id":/usr/local/bin/republicd; then
-        err "Không thể copy binary vào container republicd_node$id"
-        rm -f "$tmpfile"
-        if [[ "$started_here" == "true" ]]; then sudo docker stop "republicd_node$id" >/dev/null 2>&1; fi
-        return 1
-    fi
-
-    # try to make it executable inside container; if that fails, attempt tar-extract fallback
-    if sudo docker exec "republicd_node$id" chmod +x /usr/local/bin/republicd 2>/dev/null; then
-        msg "Đã set executable bên trong container"
-    else
-        warn "chmod bên trong container thất bại, thử phương pháp tar fallback..."
-        (cd "$(dirname "$tmpfile")" && tar -cf - "$(basename "$tmpfile")") | sudo docker exec -i "republicd_node$id" tar -C /usr/local/bin -xpf - --no-same-owner 2>/dev/null || true
-        sudo docker exec "republicd_node$id" bash -c 'if [ -f /usr/local/bin/$(basename "$tmpfile") ]; then mv /usr/local/bin/$(basename "$tmpfile") /usr/local/bin/republicd 2>/dev/null || true; fi' 2>/dev/null || true
-        sudo docker exec "republicd_node$id" chmod +x /usr/local/bin/republicd 2>/dev/null || warn "Vẫn không thể chmod, container có thể có filesystem read-only or restricted"
-    fi
-
-    # Quick sanity checks: is file present and executable?
-    if ! sudo docker exec "republicd_node$id" bash -lc 'if [ -x /usr/local/bin/republicd ]; then echo OK; else echo NO; fi' | grep -q OK; then
-        err "Binary vẫn không thể thực thi trong container. Kiểm tra kiến trúc hoặc quyền. Reverting backup."
-        # attempt to restore backup
-        sudo docker exec "republicd_node$id" bash -c 'if ls /usr/local/bin/republicd.bak.* >/dev/null 2>&1; then latest=$(ls -1t /usr/local/bin/republicd.bak.* | head -n1) && cp "$latest" /usr/local/bin/republicd || true; fi' 2>/dev/null || true
-        if [[ "$started_here" == "true" ]]; then sudo docker stop "republicd_node$id" >/dev/null 2>&1; fi
+    # 2. Đảm bảo container đang tồn tại
+    if ! sudo docker ps -a --format '{{.Names}}' | grep -q "republicd_node$id"; then
+        err "Container republicd_node$id không tồn tại!"
         rm -f "$tmpfile"
         return 1
     fi
 
-    # Apply state restoration: if it was running originally, restart to pick up binary
-    if [[ "$was_running" == "true" ]]; then
-        msg "Khởi động lại container republicd_node$id để áp dụng binary mới..."
-        if ! sudo docker restart "republicd_node$id" 2>/dev/null; then
-            err "Restart container thất bại. Thử rollback..."
-            sudo docker exec "republicd_node$id" bash -c 'if ls /usr/local/bin/republicd.bak.* >/dev/null 2>&1; then latest=$(ls -1t /usr/local/bin/republicd.bak.* | head -n1) && cp "$latest" /usr/local/bin/republicd || true; fi' 2>/dev/null || true
-            sudo docker restart "republicd_node$id" 2>/dev/null || warn "Không thể restart container sau rollback, vui lòng kiểm tra manual"
-            rm -f "$tmpfile"
-            return 1
-        fi
+    # 3. Thực hiện copy và sửa quyền bằng quyền ROOT của container
+    msg "Đang nạp binary mới và cấp quyền thực thi..."
+    
+    # Dùng cat để đẩy dữ liệu vào, tránh lỗi permission của docker cp
+    cat "$tmpfile" | sudo docker exec -i -u 0 "republicd_node$id" bash -c "cat > /usr/local/bin/republicd && chmod +x /usr/local/bin/republicd"
+
+    if [ $? -eq 0 ]; then
+        msg "Đã cập nhật binary thành công."
+        
+        # 4. Kiểm tra phiên bản mới (Sanity check)
+        new_version=$(sudo docker exec "republicd_node$id" republicd version 2>/dev/null)
+        msg "Version hiện tại: $new_version"
+
+        # 5. Khởi động lại container
+        msg "Khởi động lại node..."
+        sudo docker restart "republicd_node$id"
     else
-        # was stopped originally; stop it again to restore previous state
-        if [[ "$started_here" == "true" ]]; then
-            sudo docker stop "republicd_node$id" >/dev/null 2>&1 || warn "Không thể stop container republicd_node$id sau cập nhật"
-            msg "Đã restore trạng thái container (stopped)."
-        fi
+        err "Cập nhật thất bại! Kiểm tra quyền của container."
     fi
 
     rm -f "$tmpfile"
-    msg "Upgrade binary cho node $id hoàn tất."
 }
 
 upgrade_binary_all() {
